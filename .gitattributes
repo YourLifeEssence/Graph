@@ -1,0 +1,26 @@
+# Универсальные настройки для всех текстовых файлов
+* text=auto eol=lf
+
+# Явно указать для C/C++ файлов
+*.cpp text eol=lf
+*.h   text eol=lf
+*.hpp text eol=lf
+*.c   text eol=lf
+
+# CMake файлы
+CMakeLists.txt text eol=lf
+*.cmake         text eol=lf
+
+# Скрипты
+*.sh   text eol=lf
+*.py   text eol=lf
+*.bat  text eol=crlf
+
+# Git игнорирует бинарники (не меняем окончания строк)
+*.png binary
+*.jpg binary
+*.exe binary
+*.dll binary
+*.lib binary
+*.so  binary
+*.a   binary

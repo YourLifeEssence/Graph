@@ -10,6 +10,7 @@
 #include <chrono>
 #include <stack>
 #include <functional>
+#include <cmath>
 
 class Graph {
 public:
@@ -653,13 +654,39 @@ public:
             return;
         }
 
-        in >> rows >> cols;
-        heights.resize(rows, std::vector<int>(cols));
+        std::string firstLine;
+        std::getline(in, firstLine);
 
-        for (int i = 0; i < rows; ++i) {
-            for (int j = 0; j < cols; ++j) {
-                in >> heights[i][j];
+        std::istringstream iss(firstLine);
+        std::vector<int> numbers;
+        int num;
+        while (iss >> num) {
+            numbers.push_back(num);
+        }
+
+        if (numbers.size() == 2) {
+            // Формат с размерами
+            rows = numbers[0];
+            cols = numbers[1];
+            heights.resize(rows, std::vector<int>(cols));
+
+            for (int i = 0; i < rows; ++i) {
+                for (int j = 0; j < cols; ++j) {
+                    in >> heights[i][j];
+                }
             }
+        } else {
+            // задание 12
+            heights.push_back(numbers);
+
+            std::string line;
+            while (std::getline(in, line)) {
+                if (line.empty()) continue;
+                heights.push_back(parseLineToInts(line));
+            }
+
+            rows = static_cast<int>(heights.size());
+            cols = rows > 0 ? static_cast<int>(heights[0].size()) : 0;
         }
     }
 
@@ -685,12 +712,28 @@ public:
     }
 private:
     std::vector<std::vector<int>> heights;
-    int rows, cols;
+    int rows = 0, cols = 0;
+
+    static std::vector<int> parseLineToInts(const std::string& line) {
+        std::vector<int> result;
+        std::istringstream iss(line);
+        int x;
+        while (iss >> x) {
+            result.push_back(x);
+        }
+        return result;
+    }
+
 };
 
 struct Point {
     int x,y;
     bool operator==(const Point &other) const { return x == other.x && y == other.y; }
+    bool operator<(const Point& other) const {
+        if (x != other.x)
+            return x < other.x;
+        return y < other.y;
+    }
 };
 
 std::vector<Point> buildPath(const std::vector<std::vector<Point>>& parent, Point start, Point end) {
@@ -967,13 +1010,103 @@ void task11(const Graph* graph) {
     std::cout << "}";
 }
 
+double manhattan(const Point& a, const Point& b) {
+    return std::abs(a.x - b.x) + std::abs(a.y - b.y);
+}
+double chebyshev(const Point& a, const Point& b) {
+    return std::max(std::abs(a.x - b.x), std::abs(a.y - b.y));
+}
+double euclidean(const Point& a, const Point& b) {
+    return std::sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y));
+}
+
+std::vector<Point> reconstruct_path(
+    const std::vector<std::vector<Point>>& came_from,
+    Point current
+) {
+    std::vector<Point> path;
+    while (current.x != -1 && current.y != -1) {
+        path.push_back(current);
+        current = came_from[current.x][current.y];
+    }
+    std::reverse(path.begin(), path.end());
+    return path;
+}
+
+std::pair<std::vector<Point>, double> a_star(
+    const Map& map,
+    Point start,
+    Point end,
+    std::function<double(const Point&, const Point&)> heuristic
+)    {
+    auto [rows, cols] = map.size();
+    constexpr double INF = 1e9;
+
+    std::vector<std::vector<double>> g_score(rows, std::vector<double>(cols,INF));  //стоимость пути от старта до точки point
+    std::vector<std::vector<Point>> came_from(rows, std::vector<Point>(cols, {-1,-1})); //откуда мы пришли в point, чтобы восстановить путь
+    std::vector<std::vector<bool>> visited(rows, std::vector<bool>(cols, false));
+
+    using PQElement = std::pair<double, Point>;
+    std::priority_queue<PQElement, std::vector<PQElement>, std::greater<>> open;
+
+    g_score[start.x][start.y] = 0;
+    open.emplace(heuristic(start,end),start);
+
+    while(!open.empty()) {
+        Point current = open.top().second;
+        open.pop();
+
+        if(visited[current.x][current.y]) continue;
+        visited[current.x][current.y] = true;
+        if(current == end) return {reconstruct_path(came_from, current), g_score[current.x][current.y]};
+
+        for(auto [nx, ny] : map.neighbors(current.x, current.y)) {
+            Point neighbor{nx,ny};
+            int cost = std::abs(nx - current.x) + std::abs(ny - current.y)
+                     + std::abs(map(nx, ny) - map(current.x, current.y));
+            double tentative_g = g_score[current.x][current.y] + cost;
+
+            if (tentative_g < g_score[nx][ny]) {
+                g_score[nx][ny] = tentative_g;
+                came_from[nx][ny] = current;
+                double f = tentative_g + heuristic(neighbor, end);
+                open.emplace(f, neighbor);
+            }
+        }
+    }
+    return {};
+}
+
+void task12(
+    const Map& map,
+    Point start,
+    Point end,
+    std::function<double(const Point&, const Point&)> heuristic
+) {
+    auto [path, cost] = a_star(map, start, end, heuristic);
+
+    if (path.empty()) {
+        std::cout << "Пути нет";
+    } else {
+        std::cout << cost << " - length of path between ("
+                  << start.x << ", " << start.y << ") and ("
+                  << end.x << ", " << end.y << ") points\nPath:\n[";
+        for (int i = 0; i < path.size(); ++i) {
+            std::cout << "(" << path[i].x << ", " << path[i].y << ")";
+            if (i + 1 != path.size()) std::cout << ", ";
+        }
+        std::cout << "]\n";
+    }
+}
+
 int main() {
     SetConsoleOutputCP(CP_UTF8);
     SetConsoleCP(CP_UTF8);
 
-    const std::string path = "C:/Users/tutir/Graph tests/task11/list_of_adjacency_t11_005.txt";
-    MatrixGraph g(path);
-    task11(&g);
+
+    // const std::string path = "C:/Users/tutir/Graph tests/task11/list_of_adjacency_t11_005.txt";
+    // MatrixGraph g(path);
+    // task11(&g);
 
     /*
     Map map("C:/Users/tutir/Downloads/Graph tests/task6/maze_t6_001.txt");
@@ -981,6 +1114,10 @@ int main() {
     Point end{3, 3};
     task6(map,start,end);
     */
+
+    // Map map("C:/Users/tutir/Graph tests/task12/map_001.txt");
+    // Point start{14,6}, end{14,13};
+    // task12(map,start,end,manhattan);
 
     return 0;
 }

@@ -4,19 +4,22 @@
 #include <limits>
 #include <random>
 #include <numeric>
+#include <thread>
+#include <mutex>
 #include "graph.h"
+
 constexpr int INF = std::numeric_limits<int>::max();
 
 class ACO {
 public:
     ACO(const Graph& g, int ants, int iterations, double a, double b, double evap, double q);
-    std::vector<int> run();
+    void run();
 private:
     const Graph& graph;
     int n;
     int numAnts;
     int maxIterations;
-    double alpha, beta, evaporationRate, Q; //параметры весов феромона, эвристики, испарение и интенсивность феромона
+    double alpha, beta, evaporationRate, Q;
 
     std::vector<std::vector<int>> distance;
     std::vector<std::vector<double>> pheromone;
@@ -32,6 +35,7 @@ private:
     int bestTourLength;
 
     std::mt19937 rng;
+    std::mutex mutex;
 };
 
 inline ACO::ACO(const Graph &g, int ants, int iterations, double a, double b, double evap, double q) :
@@ -50,86 +54,105 @@ inline ACO::ACO(const Graph &g, int ants, int iterations, double a, double b, do
     }
 }
 
-inline std::vector<int> ACO::run() {
-    bestTourLength = INF;
-    bestTour.clear();
+void ACO::run () {
+    const size_t num_ants = std::thread::hardware_concurrency();
+    const size_t n = graph.size();
+    auto matrix = graph.adjacencyMatrix();
 
-    for (int iteration = 0; iteration < maxIterations; ++iteration) {
-        ants.clear();
-        ants.resize(numAnts);
+    std::vector<std::vector<double>> pheromones(n, std::vector<double>(n, 1.0));
 
-        for (int k = 0; k < numAnts; ++k) {
-            int start = k % n;
+    std::vector<size_t> best_path;
+    double best_path_length = std::numeric_limits<double>::max();
+    std::mutex best_path_mutex;
 
-            Ant ant;
-            ant.visited.assign(n, false);
-            ant.tour.push_back(start);
-            ant.visited[start] = true;
+    // Функция для одного муравья
+    auto ant_run = [&](size_t ant_id, size_t current_iter) {
+        std::random_device rd;
+        std::mt19937 gen(rd());
 
-            while (ant.tour.size() < n) {
-                int from = ant.tour.back();
-                std::vector<double> probabilities(n, 0.0);
-                double sum = 0.0;
+        std::vector<size_t> path;
+        path.reserve(n);
+        std::uniform_int_distribution<size_t> start_dist(0, n-1);
+        size_t current = start_dist(gen);
+        path.push_back(current);
 
-                for (int to = 0; to < n; ++to) {
-                    if (!ant.visited[to] && distance[from][to] < INF) {
-                        double tau = std::pow(pheromone[from][to], alpha);
-                        double eta = std::pow(1.0 / distance[from][to], beta);
-                        probabilities[to] = tau * eta;
-                        sum += probabilities[to];
-                    }
+        std::vector<bool> visited(n, false);
+        visited[current] = true;
+
+        for (size_t step = 1; step < n; ++step) {
+            std::vector<size_t> candidates;
+            std::vector<double> probabilities;
+
+            for (size_t next = 0; next < n; ++next) {
+                if (!visited[next] && matrix[current][next] > 0) {
+                    candidates.push_back(next);
+                    double pheromone = pow(pheromones[current][next], alpha);
+                    double visibility = pow(1.0 / matrix[current][next], beta);
+                    probabilities.push_back(pheromone * visibility);
                 }
-
-                if (sum == 0.0) break;
-
-                std::discrete_distribution<int> dist(probabilities.begin(), probabilities.end());
-                int next = dist(rng);
-                if (ant.visited[next]) break; // защита от зацикливания
-
-                ant.tour.push_back(next);
-                ant.visited[next] = true;
-                ant.tourLength += distance[from][next];
             }
 
-            if (ant.tour.size() == static_cast<size_t>(n) && distance[ant.tour.back()][ant.tour.front()] < INF) {
-                ant.tourLength += distance[ant.tour.back()][ant.tour.front()];
-                ant.tour.push_back(ant.tour.front());
+            if (candidates.empty()) break;
+
+            double sum = std::accumulate(probabilities.begin(), probabilities.end(), 0.0);
+            if (sum > 0) {
+                for (auto& p : probabilities) p /= sum;
             }
 
-            ants[k] = ant;
+            std::discrete_distribution<size_t> dist(probabilities.begin(), probabilities.end());
+            size_t next = candidates[dist(gen)];
 
-            if (ant.tourLength < bestTourLength && ant.tour.size() == static_cast<size_t>(n + 1)) {
-                bestTourLength = ant.tourLength;
-                bestTour = ant.tour;
-            }
+            path.push_back(next);
+            visited[next] = true;
+            current = next;
         }
 
-        // Обновление феромона
-        for (int i = 0; i < n; ++i)
-            for (int j = 0; j < n; ++j)
-                pheromone[i][j] *= (1.0 - evaporationRate);
+        if (path.size() == n && matrix[path.back()][path.front()] > 0) {
+            double path_length = 0.0;
+            for (size_t i = 0; i < n; ++i) {
+                path_length += matrix[path[i]][path[(i+1)%n]];
+            }
 
-        for (const Ant& ant : ants) {
-            if (ant.tour.size() != static_cast<size_t>(n + 1)) continue;
-            for (int i = 0; i < n; ++i) {
-                int from = ant.tour[i];
-                int to = ant.tour[i + 1];
-                pheromone[from][to] += Q / ant.tourLength;
-                pheromone[to][from] += Q / ant.tourLength;
+            std::lock_guard<std::mutex> lock(best_path_mutex);
+            if (path_length < best_path_length) {
+                best_path_length = path_length;
+                best_path = path;
+                std::cout << "Iteration " << current_iter << ": New best path = " << best_path_length << "\n";
+            }
+
+            for (size_t i = 0; i < n; ++i) {
+                size_t from = path[i];
+                size_t to = path[(i+1)%n];
+                pheromones[from][to] += Q / path_length;
+                if (!graph.isDirected()) {
+                    pheromones[to][from] += Q / path_length;
+                }
+            }
+        }
+    };
+
+    for (size_t iter = 0; iter < maxIterations; ++iter) {
+        std::vector<std::thread> ants;
+        for (size_t ant = 0; ant < num_ants; ++ant) {
+            ants.emplace_back(ant_run, ant, iter + 1);
+        }
+
+        for (auto& ant : ants) ant.join();
+
+        for (auto& row : pheromones) {
+            for (auto& p : row) {
+                p *= (1.0 - evaporationRate);
             }
         }
     }
 
-    std::cout << "Length of shortest traveling salesman path is: " << bestTourLength << ".\n";
-    std::cout << "Path:\n";
-
-    for (size_t i = 0; i < bestTour.size() - 1; ++i) {
-        int from = bestTour[i];
-        int to = bestTour[i + 1];
-        std::cout << from + 1 << "-" << to + 1 << " : " << distance[from][to] << "\n";
+    if (!best_path.empty()) {
+        std::cout << "\nBest path found (length = " << best_path_length << "):\n";
+        for (size_t v : best_path) std::cout << v + 1 << " ";
+        std::cout << best_path[0] + 1 << "\n";
+    } else {
+        std::cout << "\nNo valid Hamiltonian cycle found!\n";
     }
-    return bestTour;
 }
-
 
 #endif // TASK19_H

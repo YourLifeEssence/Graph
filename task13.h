@@ -6,7 +6,6 @@ void task13(const Graph* graph) {
     int n = graph->size();
     std::vector<std::vector<int>> adj = graph->adjacencyList();
 
-    // Этап 1: Проверка на двудольность
     std::vector<int> color(n, -1);
     bool isBipartite = true;
 
@@ -29,7 +28,6 @@ void task13(const Graph* graph) {
         return;
     }
 
-    // Этап 2: Поиск максимального паросочетания алгоритмом Куна
     std::vector<int> matchTo(n, -1);
     std::function<bool(int, std::vector<bool>&)> kuhn = [&](int u, std::vector<bool>& visited) {
         for (int v : adj[u]) {
@@ -52,7 +50,6 @@ void task13(const Graph* graph) {
         }
     }
 
-    // Этап 3: Вывод результата
     std::cout << "Size of maximum matching: " << matchCount << ".\n";
     std::cout << "Maximum matching:\n{";
     for (int v = 0; v < n; ++v) {

@@ -1,11 +1,23 @@
-cmake_minimum_required(VERSION 3.28)
-project(Graph)
+cmake_minimum_required(VERSION 3.20)
+project(Graph LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
-add_executable(
-        Graph main.cpp
-        task19.h
-        graph.h
-        task14.h
-        task13.h)
+add_executable(Graph main.cpp graph.h task12.h task13.h)
+if (MSVC)
+    target_compile_options(Graph PRIVATE /W4)
+else()
+    target_compile_options(Graph PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+
+enable_testing()
+add_executable(GraphSmokeTests tests/smoke_tests.cpp graph.h task12.h task13.h)
+target_include_directories(GraphSmokeTests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+if (MSVC)
+    target_compile_options(GraphSmokeTests PRIVATE /W4)
+else()
+    target_compile_options(GraphSmokeTests PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+add_test(NAME GraphSmokeTests COMMAND GraphSmokeTests)

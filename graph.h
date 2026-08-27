@@ -13,7 +13,11 @@
 #include <chrono>
 #include <stack>
 #include <functional>
+#include <limits>
 #include <cmath>
+#include <tuple>
+#include <stdexcept>
+#include <climits>
 
 class Graph {
 public:
@@ -32,13 +36,26 @@ protected:
     bool weighted{};
 };
 
-class MatrixGraph final: public Graph {
+class MatrixGraph final : public Graph {
 public:
     explicit MatrixGraph(const std::string& filePath) {
         std::ifstream in(filePath);
+        if (!in) {
+            throw std::runtime_error("Unable to open graph file: " + filePath);
+        }
+
         std::string line;
-        std::getline(in, line);
-        countVertex = std::stoi(line);
+        if (!std::getline(in, line) || line.empty()) {
+            throw std::runtime_error("Graph file is missing the vertex count.");
+        }
+        try {
+            countVertex = std::stoi(line);
+        } catch (const std::exception&) {
+            throw std::runtime_error("Invalid vertex count in graph file.");
+        }
+        if (countVertex <= 0) {
+            throw std::runtime_error("Vertex count must be positive.");
+        }
 
         std::vector<std::vector<std::string>> rawData;
         while (std::getline(in, line)) {
@@ -51,13 +68,21 @@ public:
             rawData.push_back(row);
         }
 
+        if (rawData.empty()) {
+            throw std::runtime_error("Graph file contains no graph data.");
+        }
+        for (const auto& row : rawData) {
+            if (row.empty()) {
+                throw std::runtime_error("Graph data contains an empty row.");
+            }
+        }
+
         Matrix.resize(countVertex, std::vector<int>(countVertex, 0));
         weighted = false;
 
         if (rawData.size() == countVertex && !rawData.empty() &&
             !rawData[0].empty() && rawData[0][0].find(':') == std::string::npos &&
-            rawData[0].size() == countVertex)
-            {
+            rawData[0].size() == countVertex){
             for (int i = 0; i < countVertex; ++i) {
                 for (int j = 0; j < countVertex; ++j) {
                     int val = std::stoi(rawData[i][j]);
@@ -65,7 +90,8 @@ public:
                     if (val != 0 && val != 1) weighted = true;
                 }
             }
-        } else if (rawData.size() == countVertex) {
+        } 
+        else if (rawData.size() == countVertex) {
             for (int i = 0; i < countVertex; ++i) {
                 for (const std::string& entry : rawData[i]) {
                     if (entry.find(':') != std::string::npos) {
@@ -124,7 +150,7 @@ public:
         return list;
     }
 
-    [[nodiscard]] std::vector<std::vector<std::pair<int, int>>> weightedAdjacencyList() const {
+    [[nodiscard]] std::vector<std::vector<std::pair<int, int>>> weightedAdjacencyList() const override {
         std::vector<std::vector<std::pair<int,int>>> weightedList(countVertex);
         for(int i = 0; i < countVertex; ++i) {
             for(int j = 0; j < countVertex; ++j) {
@@ -147,13 +173,26 @@ private:
     std::vector<std::vector<int>> Matrix;
 };
 
-class ListGraph final: public Graph {
+class ListGraph final : public Graph {
 public:
     explicit ListGraph(const std::string& filePath) {
         std::ifstream in(filePath);
+        if (!in) {
+            throw std::runtime_error("Unable to open graph file: " + filePath);
+        }
+
         std::string line;
-        std::getline(in, line);
-        countVertex = std::stoi(line);
+        if (!std::getline(in, line) || line.empty()) {
+            throw std::runtime_error("Graph file is missing the vertex count.");
+        }
+        try {
+            countVertex = std::stoi(line);
+        } catch (const std::exception&) {
+            throw std::runtime_error("Invalid vertex count in graph file.");
+        }
+        if (countVertex <= 0) {
+            throw std::runtime_error("Vertex count must be positive.");
+        }
 
         std::vector<std::vector<std::string>> rawData;
         while (std::getline(in, line)) {
@@ -170,7 +209,7 @@ public:
         weightedList.resize(countVertex);
         weighted = false;
 
-        if (rawData.size() == countVertex && rawData[0][0].find(':') == std::string::npos && rawData[0].size() == countVertex) {
+        if (rawData.size() == countVertex && !rawData[0].empty() && rawData[0][0].find(':') == std::string::npos && rawData[0].size() == countVertex) {
             for (int i = 0; i < countVertex; ++i) {
                 for (int j = 0; j < countVertex; ++j) {
                     int val = std::stoi(rawData[i][j]);
@@ -241,7 +280,7 @@ public:
         return List;
     }
 
-    [[nodiscard]] std::vector<std::vector<std::pair<int, int>>> weightedAdjacencyList() const {
+    [[nodiscard]] std::vector<std::vector<std::pair<int, int>>> weightedAdjacencyList() const override {
         return weightedList;
     }
 
@@ -344,35 +383,42 @@ void dfsTask8(int v,int parent, int& timer,
     if (parent == -1 && children > 1) isArticulation[v] = true;
 }
 
-void task8(const Graph* graph) {
-    if(graph->isDirected()) std::cout << "Поиск мостов и шарниров для орграфа не реализован";
+void task7(const Graph* graph) {
+    if (graph == nullptr) {
+        return;
+    }
+    if (graph->isDirected()) {
+        std::cout << "Поиск мостов и точек сочленения поддерживается только для неориентированного графа.\n";
+        return;
+    }
 
-    int n = graph->size();
+    const int n = graph->size();
     int timer = 0;
-    std::vector<std::vector<int>> adj = graph->adjacencyList();
-    std::vector<int> tin(n,-1);
-    std::vector<int> low(n,-1);
-    std::vector<bool> visited(n,false), isArticulation(n,false);
-    std::vector<std::pair<int,int>> bridges;
+    const auto adj = graph->adjacencyList();
+    std::vector<int> tin(n, -1);
+    std::vector<int> low(n, -1);
+    std::vector<bool> visited(n, false);
+    std::vector<bool> isArticulation(n, false);
+    std::vector<std::pair<int, int>> bridges;
 
-    for(int i = 0; i < n; ++i) {
-        if(!visited[i]) {
-            dfsTask8(i, -1, timer, adj, tin, low, visited, isArticulation, bridges);
+    for (int i = 0; i < n; ++i) {
+        if (!visited[i]) {
+            dfsTask8(i, -1, timer, adj, tin, low, visited,
+                     isArticulation, bridges);
         }
     }
 
-    for (auto& bridge : bridges) {
-        if (bridge.first > bridge.second) std::swap(bridge.first, bridge.second);
-    }
-
     std::cout << "Мосты:\n";
-    for (auto& u : bridges) {
-        std::cout << (u.first + 1) << " - " << (u.second + 1) << "\n";
+    for (auto [from, to] : bridges) {
+        if (from > to) {
+            std::swap(from, to);
+        }
+        std::cout << from + 1 << " - " << to + 1 << "\n";
     }
     std::cout << "Точки сочленения:\n";
     for (int i = 0; i < n; ++i) {
         if (isArticulation[i]) {
-            std::cout << (i + 1) << "\n";
+            std::cout << i + 1 << "\n";
         }
     }
 }
@@ -387,7 +433,7 @@ void dfsTask3(int v, std::vector<std::vector<int>>& adj, std::vector<bool>& visi
     }
 }
 
-void task3(const Graph* graph) {
+void task2(const Graph* graph) {
     int n = graph->size();
     std::vector<std::vector<int>> adj = graph->adjacencyList();
     std::vector<bool> visited(n,false);
@@ -405,125 +451,177 @@ void task3(const Graph* graph) {
 }
 
 void algorithmPrim(const Graph* graph) {
-    auto begin = std::chrono::high_resolution_clock::now();
-    int n = graph->size();
-    std::vector<std::vector<int>> matrix = graph->adjacencyMatrix();
-    std::vector<int> key(n, INT_MAX); //Мин ребро для каждой вершины
-    std::vector<int> parent(n,-1);
-    std::vector<bool> inMST(n,false);
-    int start = 0;
-    key[start] = 0;
-    parent[start] = -1;
-    std::priority_queue<
-        std::pair<int,int>,              //Тип элементов (что храним), вес - вершина
-        std::vector<std::pair<int,int>>, //Контейнер (где храним)
-        std::greater<std::pair<int,int>> //Компаратор
-    > pq;
-    pq.push({0, start});
-    while(!pq.empty()) {
-        int u = pq.top().second;
-        pq.pop();
-
-        if(inMST[u]) continue;
-        inMST[u] = true;
-
-        for(int v = 0; v < n; ++v) {
-            int weight = matrix[u][v];
-            if(weight != 0 && !inMST[v] && weight < key[v]) {
-                key[v] = weight;
-                parent[v] = u;
-                pq.push({key[v], v});
-            }
-        }
-    }
-    int totalWeight = 0;
-    std::cout << "Остовное дерево (Прим):\n";
-    for (int i = 1; i < n; ++i) {
-        std::cout << parent[i] + 1 << " - " << i + 1 << " (вес: " << matrix[parent[i]][i] << ")\n";
-        totalWeight += matrix[parent[i]][i];
-    }
-    std::cout << "Суммарный вес: " << totalWeight << "\n";
-
-    auto end = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> elapsed = end - begin;
-    std::cout << "Время выполнения алгоритма Прима: " << elapsed.count() << " секунд\n";
-}
-
-void algorithmKruskal(const Graph* graph) {
-    auto begin = std::chrono::high_resolution_clock::now();
-    int n = graph->size();
-    std::vector<std::vector<std::pair<int, int>>> list = graph->weightedAdjacencyList();
-    std::vector<std::vector<int>> edgeList;
-    std::set<std::pair<int, int>> addedEdges;// чтобы отлавливать дубликаты
-    for (int from = 0; from < n; ++from) {
-        for (auto [to, weight] : list[from]) {
-            int u = std::min(from, to);
-            int v = std::max(from, to);
-            if (addedEdges.count({u, v}) == 0) {
-                edgeList.push_back({from, to, weight});
-                addedEdges.insert({u, v});
-            }
-        }
-    }
-    std::sort(edgeList.begin(),edgeList.end(),[](const std::vector<int>& a, const std::vector<int>& b){ return a[2] < b[2];});
-    std::vector<int> parent(n), rank(n,0);
-    for(int i = 0; i < n; ++i) parent[i] = i;
-    auto find = [&](int x) { //Уходим к корню множества
-        while (x != parent[x])
-            x = parent[x] = parent[parent[x]];
-        return x;
-    };
-    auto unite = [&](int x, int y) { //Лямбда функция для объединения 2 множеств
-        int rx = find(x), ry = find(y);
-        if (rx == ry) return false;
-        if (rank[rx] < rank[ry]) std::swap(rx, ry);
-        parent[ry] = rx;
-        if (rank[rx] == rank[ry]) ++rank[rx];
-        return true;
-    };
-    int totalWeight = 0;
-    std::cout << "\nОстовное дерево (Краскал):\n";
-    for (const auto& edge : edgeList) {
-        int u = edge[0], v = edge[1], w = edge[2];
-        if (unite(u, v)) {
-            std::cout << u + 1 << " - " << v + 1 << " (вес: " << w << ")\n";
-            totalWeight += w;
-        }
-    }
-    std::cout << "Суммарный вес: " << totalWeight << "\n";
-
-    auto end = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> elapsed = end - begin;
-    std::cout << "Время выполнения алгоритма Краскала: " << elapsed.count() << " секунд\n";
-}
-
-void task9(const Graph* graph) {
-    int n = graph->size();
-    //Проверка связный ли граф
-    std::vector<bool> visited(n, false);
-    std::vector<std::vector<int>> adj = graph->adjacencyList();
-    std::vector<std::vector<int>> components;
-    for (int i = 0; i < n; ++i) {
-        if (!visited[i]) {
-            std::vector<int> component;
-            dfs(i, adj, visited, component);
-            components.push_back(component);
-        }
-    }
-    if(components.size() > 1) {
-        std::cout << "Graph is not connected";
+    if (graph == nullptr || graph->isDirected()) {
+        std::cout << "Prim requires a non-directed graph.\n";
         return;
     }
 
-    //Алгоритм Прима
-    algorithmPrim(graph);
+    const auto begin = std::chrono::high_resolution_clock::now();
+    const int n = graph->size();
+    const auto matrix = graph->adjacencyMatrix();
+    const int infinity = std::numeric_limits<int>::max();
+    std::vector<int> key(n, infinity);
+    std::vector<int> parent(n, -1);
+    std::vector<bool> inMst(n, false);
+    std::priority_queue<std::pair<int, int>,
+                        std::vector<std::pair<int, int>>,
+                        std::greater<std::pair<int, int>>> queue;
 
-    //Алгоритм Краскала
-    algorithmKruskal(graph);
+    key[0] = 0;
+    queue.push({0, 0});
 
+    while (!queue.empty()) {
+        const int u = queue.top().second;
+        queue.pop();
+        if (inMst[u]) {
+            continue;
+        }
+        inMst[u] = true;
+
+        for (int v = 0; v < n; ++v) {
+            const int weight = matrix[u][v];
+            if (weight != 0 && !inMst[v] && weight < key[v]) {
+                key[v] = weight;
+                parent[v] = u;
+                queue.push({weight, v});
+            }
+        }
+    }
+
+    for (bool included : inMst) {
+        if (!included) {
+            std::cout << "Graph is not connected; MST was not built.\n";
+            return;
+        }
+    }
+
+    int totalWeight = 0;
+    std::cout << "Остовное дерево (Прим):\n";
+    for (int vertex = 1; vertex < n; ++vertex) {
+        const int from = parent[vertex];
+        std::cout << from + 1 << " - " << vertex + 1
+                  << " (вес: " << matrix[from][vertex] << ")\n";
+        totalWeight += matrix[from][vertex];
+    }
+    std::cout << "Суммарный вес: " << totalWeight << "\n";
+
+    const auto end = std::chrono::high_resolution_clock::now();
+    const std::chrono::duration<double> elapsed = end - begin;
+    std::cout << "Время выполнения алгоритма Прима: " << elapsed.count()
+              << " секунд\n";
+}
+void algorithmKruskal(const Graph* graph) {
+    if (graph == nullptr || graph->isDirected()) {
+        std::cout << "Kruskal requires a non-directed graph.\n";
+        return;
+    }
+
+    const auto begin = std::chrono::high_resolution_clock::now();
+    const int n = graph->size();
+    const auto weightedList = graph->weightedAdjacencyList();
+    std::vector<std::tuple<int, int, int>> edges;
+    std::set<std::pair<int, int>> addedEdges;
+
+    for (int from = 0; from < n; ++from) {
+        for (const auto [to, weight] : weightedList[from]) {
+            const int first = std::min(from, to);
+            const int second = std::max(from, to);
+            if (addedEdges.insert({first, second}).second) {
+                edges.emplace_back(first, second, weight);
+            }
+        }
+    }
+
+    std::sort(edges.begin(), edges.end(), [](const auto& left, const auto& right) {
+        return std::get<2>(left) < std::get<2>(right);
+    });
+
+    std::vector<int> parent(n);
+    std::vector<int> rank(n, 0);
+    for (int vertex = 0; vertex < n; ++vertex) {
+        parent[vertex] = vertex;
+    }
+
+    std::function<int(int)> find = [&](int vertex) {
+        if (parent[vertex] != vertex) {
+            parent[vertex] = find(parent[vertex]);
+        }
+        return parent[vertex];
+    };
+    auto unite = [&](int left, int right) {
+        left = find(left);
+        right = find(right);
+        if (left == right) {
+            return false;
+        }
+        if (rank[left] < rank[right]) {
+            std::swap(left, right);
+        }
+        parent[right] = left;
+        if (rank[left] == rank[right]) {
+            ++rank[left];
+        }
+        return true;
+    };
+
+    int totalWeight = 0;
+    int edgeCount = 0;
+    std::cout << "\nОстовное дерево (Краскал):\n";
+    for (const auto [from, to, weight] : edges) {
+        if (unite(from, to)) {
+            std::cout << from + 1 << " - " << to + 1
+                      << " (вес: " << weight << ")\n";
+            totalWeight += weight;
+            ++edgeCount;
+        }
+    }
+
+    if (edgeCount != n - 1) {
+        std::cout << "Graph is not connected; MST was not built.\n";
+        return;
+    }
+    std::cout << "Суммарный вес: " << totalWeight << "\n";
+
+    const auto end = std::chrono::high_resolution_clock::now();
+    const std::chrono::duration<double> elapsed = end - begin;
+    std::cout << "Время выполнения алгоритма Краскала: " << elapsed.count()
+              << " секунд\n";
 }
 
-void task4(const Graph* graph) {
+void task8(const Graph* graph) {
+    if (graph == nullptr || graph->isDirected()) {
+        std::cout << "MST requires a non-directed graph.\n";
+        return;
+    }
+
+    const int n = graph->size();
+    const auto adjacency = graph->adjacencyList();
+    std::vector<bool> visited(n, false);
+    std::queue<int> queue;
+    queue.push(0);
+    visited[0] = true;
+
+    while (!queue.empty()) {
+        const int vertex = queue.front();
+        queue.pop();
+        for (const int neighbor : adjacency[vertex]) {
+            if (!visited[neighbor]) {
+                visited[neighbor] = true;
+                queue.push(neighbor);
+            }
+        }
+    }
+
+    if (std::find(visited.begin(), visited.end(), false) != visited.end()) {
+        std::cout << "Graph is not connected; MST was not built.\n";
+        return;
+    }
+
+    algorithmPrim(graph);
+    algorithmKruskal(graph);
+}
+
+void task3(const Graph* graph) {
     const int INF = 1e9;
     int n = graph->size();
     std::vector<std::vector<int>> matrix = graph->adjacencyMatrix();
@@ -540,8 +638,7 @@ void task4(const Graph* graph) {
     std::vector<int> centralVertices;
     for(int i = 0; i < n; ++i) {
         for(int j = 0; j < n; ++j) {
-            if(matrix[i][j] == 1)
-                degree[i]++;
+            if (matrix[i][j] != 0) degree[i]++;
         }
     }
     //Алг. Флойда
@@ -601,7 +698,7 @@ void task4(const Graph* graph) {
     }
 }
 
-void task5(const Graph* graph) {
+void task4(const Graph* graph) {
     int n = graph->size();
     std::vector<std::vector<int>> adj = graph->adjacencyList();
     std::vector<int> color(n, -1);
@@ -652,53 +749,75 @@ public:
     Map(const std::string& filename) {
         std::ifstream in(filename);
         if (!in) {
-            std::cerr << "Ошибка при открытии файла\n";
-            rows = cols = 0;
-            return;
+            throw std::runtime_error("Unable to open map file: " + filename);
         }
 
         std::string firstLine;
-        std::getline(in, firstLine);
+        if (!std::getline(in, firstLine)) {
+            throw std::runtime_error("Map file is empty.");
+        }
 
         std::istringstream iss(firstLine);
         std::vector<int> numbers;
-        int num;
-        while (iss >> num) {
-            numbers.push_back(num);
+        int number = 0;
+        while (iss >> number) {
+            numbers.push_back(number);
         }
 
         if (numbers.size() == 2) {
-            // Формат с размерами
             rows = numbers[0];
             cols = numbers[1];
+            if (rows <= 0 || cols <= 0) {
+                throw std::runtime_error("Map dimensions must be positive.");
+            }
             heights.resize(rows, std::vector<int>(cols));
-
             for (int i = 0; i < rows; ++i) {
                 for (int j = 0; j < cols; ++j) {
-                    in >> heights[i][j];
+                    if (!(in >> heights[i][j])) {
+                        throw std::runtime_error("Map data has fewer cells than declared.");
+                    }
                 }
             }
         } else {
-            // задание 12
+            if (numbers.empty()) {
+                throw std::runtime_error("Map file has no data.");
+            }
             heights.push_back(numbers);
-
             std::string line;
             while (std::getline(in, line)) {
-                if (line.empty()) continue;
-                heights.push_back(parseLineToInts(line));
+                if (line.empty()) {
+                    continue;
+                }
+                auto row = parseLineToInts(line);
+                if (row.empty()) {
+                    throw std::runtime_error("Map contains an invalid row.");
+                }
+                heights.push_back(row);
             }
 
             rows = static_cast<int>(heights.size());
-            cols = rows > 0 ? static_cast<int>(heights[0].size()) : 0;
+            cols = static_cast<int>(heights.front().size());
+            if (cols == 0) {
+                throw std::runtime_error("Map rows must not be empty.");
+            }
+            for (const auto& row : heights) {
+                if (static_cast<int>(row.size()) != cols) {
+                    throw std::runtime_error("Map rows must have equal lengths.");
+                }
+            }
         }
     }
 
-    std::pair<int,int> size() const {
+    std::pair<int, int> size() const {
         return {rows, cols};
     }
 
+    [[nodiscard]] bool valid(int i, int j) const {
+        return i >= 0 && i < rows && j >= 0 && j < cols;
+    }
+
     int operator()(int i, int j) const {
-        return heights[i][j];
+        return heights.at(i).at(j);
     }
 
     std::vector<std::pair<int,int>> neighbors(int i, int j) const {
@@ -739,39 +858,60 @@ struct Point {
     }
 };
 
-std::vector<Point> buildPath(const std::vector<std::vector<Point>>& parent, Point start, Point end) {
+std::vector<Point> buildPath(
+    const std::vector<std::vector<Point>>& parent,
+    Point start,
+    Point end
+) {
     std::vector<Point> path;
-    Point cur = end;
-    while(!(cur == start)) {
-        path.push_back(cur);
-        cur = parent[cur.x][cur.y];
+    Point current = end;
+    while (!(current == start)) {
+        if (current.x < 0 || current.y < 0 ||
+            current.x >= static_cast<int>(parent.size()) ||
+            current.y >= static_cast<int>(parent[current.x].size())) {
+            return {};
+        }
+        path.push_back(current);
+        Point next = parent[current.x][current.y];
+        if (next.x < 0 || next.y < 0) { // если родитель - (-1,-1), прерываем
+            return {};
+        }
+        current = next;
     }
     path.push_back(start);
-    std::reverse(path.begin(),path.end());
+    std::reverse(path.begin(), path.end());
     return path;
 }
 
-void task6(const Map& map, Point start, Point end) {
-    auto [rows, cols] = map.size();
-    std::vector<std::vector<bool>> visited(rows, std::vector<bool>(cols, false));
-    std::vector<std::vector<Point>> parent(rows, std::vector<Point>(cols, {-1, -1}));
+void task5(const Map& map, Point start, Point end) {
+    if (!map.valid(start.x, start.y) || !map.valid(end.x, end.y) ||
+        map(start.x, start.y) <= 0 || map(end.x, end.y) <= 0) {
+        std::cout << "Invalid or blocked start/end cell.\n";
+        return;
+    }
 
-    std::queue<Point> q;
-    q.push(start);
+    const auto [rows, cols] = map.size();
+    std::vector<std::vector<bool>> visited(rows, std::vector<bool>(cols, false));
+    std::vector<std::vector<Point>> parent(
+        rows, std::vector<Point>(cols, {-1, -1}));
+
+    std::queue<Point> queue;
+    queue.push(start);
     visited[start.x][start.y] = true;
 
     bool found = false;
-    while (!q.empty()) {
-        Point cur = q.front(); q.pop();
-        if (cur == end) {
+    while (!queue.empty()) {
+        const Point current = queue.front();
+        queue.pop();
+        if (current == end) {
             found = true;
             break;
         }
-        for (auto [nx, ny] : map.neighbors(cur.x, cur.y)) {
-            if (!visited[nx][ny]) {
-                visited[nx][ny] = true;
-                parent[nx][ny] = cur;
-                q.push({nx, ny});
+        for (const auto [nextRow, nextColumn] : map.neighbors(current.x, current.y)) {
+            if (!visited[nextRow][nextColumn]) {
+                visited[nextRow][nextColumn] = true;
+                parent[nextRow][nextColumn] = current;
+                queue.push({nextRow, nextColumn});
             }
         }
     }
@@ -781,13 +921,16 @@ void task6(const Map& map, Point start, Point end) {
         return;
     }
 
-    auto path = buildPath(parent, start, end);
-
-    std::cout << "Length of path from (" << start.x << ", " << start.y << ") to (" << end.x << ", " << end.y << "): " << (int)path.size() - 1 << "\n";
+    const auto path = buildPath(parent, start, end);
+    std::cout << "Length of path from (" << start.x << ", " << start.y
+              << ") to (" << end.x << ", " << end.y << "): "
+              << static_cast<int>(path.size()) - 1 << "\n";
     std::cout << "Path:\n[";
     for (size_t i = 0; i < path.size(); ++i) {
         std::cout << "(" << path[i].x << ", " << path[i].y << ")";
-        if (i + 1 < path.size()) std::cout << ", ";
+        if (i + 1 < path.size()) {
+            std::cout << ", ";
+        }
     }
     std::cout << "]\n";
 }
@@ -812,7 +955,7 @@ void dfsTask7_2(int v, const std::vector<std::vector<int>>& adjT, std::vector<bo
     }
 }
 
-void task7(const Graph* graph) {
+void task6(const Graph* graph) {
     if (!graph->isDirected()) {
         std::cout << "Graph must be directed\n";
         return;
@@ -868,7 +1011,7 @@ void task7(const Graph* graph) {
     }
 }
 
-void task10(const Graph* graph) {
+void task9(const Graph* graph) {
     const auto& matrix = graph->adjacencyMatrix();
     int n = graph->size();
     std::vector<std::vector<double>> dist(n, std::vector<double>(n, 1e9));
@@ -968,49 +1111,66 @@ void task10(const Graph* graph) {
     }
 }
 
-void task11(const Graph* graph) {
-    const int INF = 1e9;
-    int n = graph->size();
-    std::vector<std::vector<std::pair<int, int>>> list = graph->weightedAdjacencyList();
-    std::vector<std::vector<int>> edgeList;
+void task10(const Graph* graph) {
+    if (graph == nullptr) {
+        return;
+    }
+
+    const int n = graph->size();
+    const int infinity = std::numeric_limits<int>::max() / 4;
+    const auto weightedList = graph->weightedAdjacencyList();
+    std::vector<std::tuple<int, int, int>> edges;
     for (int from = 0; from < n; ++from) {
-        for (auto [to, weight] : list[from]) {
-            edgeList.push_back({from, to, weight});
+        for (const auto [to, weight] : weightedList[from]) {
+            edges.emplace_back(from, to, weight);
         }
     }
-    std::cout << "please enter the vertex: ";
-    int start = 0;
-    std::cin >> start;
-    --start;
 
-    std::vector<int> dist(n, INF);
-    dist[start] = 0;
+    std::cout << "Enter the start vertex (1-" << n << "): ";
+    int startVertex = 0;
+    if (!(std::cin >> startVertex) || startVertex < 1 || startVertex > n) {
+        std::cout << "Invalid start vertex.\n";
+        return;
+    }
+    const int start = startVertex - 1;
+    std::vector<int> distance(n, infinity);
+    distance[start] = 0;
 
-    for(int i = 0; i < n -1; ++i) {
-        for(auto &edge:edgeList) {
-            int u = edge[0], v = edge[1], w = edge[2];
-            if(dist[u] != INF && dist[u] + w < dist[v]) {
-                dist[v] = dist[u] + w;
+    for (int iteration = 0; iteration < n - 1; ++iteration) {
+        bool changed = false;
+        for (const auto [from, to, weight] : edges) {
+            if (distance[from] != infinity &&
+                distance[from] + weight < distance[to]) {
+                distance[to] = distance[from] + weight;
+                changed = true;
             }
         }
-    }
-    bool hasNegativeCycle = false;
-    for (const auto& edge : edgeList) {
-        int u = edge[0], v = edge[1], w = edge[2];
-        if (dist[u] != INF && dist[u] + w < dist[v]) {
-            hasNegativeCycle = true;
+        if (!changed) {
             break;
         }
     }
-    std::cout << "Shotest paths lengths from " << start << ":\n{";
-    for(int i = 0; i < n; ++i) {
-        if(dist[i] == INF) std::cout << i+1 << ": " << "+Infinity";
-        else std::cout << i+1 << ": " << dist[i];
 
-        if(i != n -1)
-            std::cout << ", ";
+    for (const auto [from, to, weight] : edges) {
+        if (distance[from] != infinity &&
+            distance[from] + weight < distance[to]) {
+            std::cout << "A reachable negative cycle exists.\n";
+            return;
+        }
     }
-    std::cout << "}";
+
+    std::cout << "Shortest path lengths from " << startVertex << ":\n{";
+    for (int i = 0; i < n; ++i) {
+        if (i > 0) {
+            std::cout << ", ";
+        }
+        std::cout << i + 1 << ": ";
+        if (distance[i] == infinity) {
+            std::cout << "+Infinity";
+        } else {
+            std::cout << distance[i];
+        }
+    }
+    std::cout << "}\n";
 }
 
 double manhattan(const Point& a, const Point& b) {
@@ -1029,6 +1189,11 @@ std::vector<Point> reconstruct_path(
 ) {
     std::vector<Point> path;
     while (current.x != -1 && current.y != -1) {
+        if (current.x < 0 || current.x >= static_cast<int>(came_from.size()) ||
+            current.y < 0 ||
+            current.y >= static_cast<int>(came_from[current.x].size())) {
+            return {};
+        }
         path.push_back(current);
         current = came_from[current.x][current.y];
     }
@@ -1041,46 +1206,73 @@ std::pair<std::vector<Point>, double> a_star(
     Point start,
     Point end,
     std::function<double(const Point&, const Point&)> heuristic
-)    {
-    auto [rows, cols] = map.size();
-    constexpr double INF = 1e9;
+) {
+    const auto [rows, cols] = map.size();
+    if (!map.valid(start.x, start.y) || !map.valid(end.x, end.y) ||
+        map(start.x, start.y) <= 0 || map(end.x, end.y) <= 0) {
+        return {};
+    }
 
-    std::vector<std::vector<double>> g_score(rows, std::vector<double>(cols,INF));  //стоимость пути от старта до точки point
-    std::vector<std::vector<Point>> came_from(rows, std::vector<Point>(cols, {-1,-1})); //откуда мы пришли в point, чтобы восстановить путь
+    constexpr double infinity = std::numeric_limits<double>::infinity();
+    std::vector<std::vector<double>> gScore(
+        rows, std::vector<double>(cols, infinity));
+    std::vector<std::vector<Point>> cameFrom(
+        rows, std::vector<Point>(cols, {-1, -1}));
     std::vector<std::vector<bool>> visited(rows, std::vector<bool>(cols, false));
 
-    using PQElement = std::pair<double, Point>;
-    std::priority_queue<PQElement, std::vector<PQElement>, std::greater<>> open;
+    struct ComparePriority {
+        bool operator()(
+            const std::pair<double, Point>& left,
+            const std::pair<double, Point>& right
+        ) const {
+            if (left.first != right.first) {
+                return left.first > right.first;
+            }
+            return right.second < left.second;
+        }
+    };
 
-    g_score[start.x][start.y] = 0;
-    open.emplace(heuristic(start,end),start);
+    using QueueElement = std::pair<double, Point>;
+    std::priority_queue<QueueElement, std::vector<QueueElement>, ComparePriority> open;
 
-    while(!open.empty()) {
-        Point current = open.top().second;
+    gScore[start.x][start.y] = 0.0;
+    open.emplace(heuristic(start, end), start);
+
+    while (!open.empty()) {
+        const Point current = open.top().second;
         open.pop();
 
-        if(visited[current.x][current.y]) continue;
+        if (visited[current.x][current.y]) {
+            continue;
+        }
         visited[current.x][current.y] = true;
-        if(current == end) return {reconstruct_path(came_from, current), g_score[current.x][current.y]};
 
-        for(auto [nx, ny] : map.neighbors(current.x, current.y)) {
-            Point neighbor{nx,ny};
-            int cost = std::abs(nx - current.x) + std::abs(ny - current.y)
-                     + std::abs(map(nx, ny) - map(current.x, current.y));
-            double tentative_g = g_score[current.x][current.y] + cost;
+        if (current == end) {
+            return {reconstruct_path(cameFrom, current), gScore[current.x][current.y]};
+        }
 
-            if (tentative_g < g_score[nx][ny]) {
-                g_score[nx][ny] = tentative_g;
-                came_from[nx][ny] = current;
-                double f = tentative_g + heuristic(neighbor, end);
-                open.emplace(f, neighbor);
+        for (const auto [nextRow, nextColumn] : map.neighbors(current.x, current.y)) {
+            const Point neighbor{nextRow, nextColumn};
+            const int movementCost =
+                std::abs(nextRow - current.x) +
+                std::abs(nextColumn - current.y) +
+                std::abs(map(nextRow, nextColumn) - map(current.x, current.y));
+            const double tentativeScore =
+                gScore[current.x][current.y] + movementCost;
+
+            if (tentativeScore < gScore[nextRow][nextColumn]) {
+                gScore[nextRow][nextColumn] = tentativeScore;
+                cameFrom[nextRow][nextColumn] = current;
+                open.emplace(
+                    tentativeScore + heuristic(neighbor, end), neighbor);
             }
         }
     }
+
     return {};
 }
 
-void task12(
+void task11(
     const Map& map,
     Point start,
     Point end,

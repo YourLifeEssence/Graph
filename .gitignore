@@ -41,6 +41,9 @@ Thumbs.db
 *.exe
 *.out
 
+# Local test executable
+smoke_tests.exe
+
 # CLion CMake profiles
 .clion/
 
@@ -48,3 +51,7 @@ Thumbs.db
 *.idea/
 *.iws
 .idea/
+
+
+#Claude
+.claude
